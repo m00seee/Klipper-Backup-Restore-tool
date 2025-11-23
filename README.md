@@ -24,7 +24,7 @@ Git is a dependency for this script to run please make sure to install git if yo
 
 To get started with this script navigate to your home folder on your device and down the script 
 
-`wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/menu.sh`
+`wget -q https://raw.githubusercontent.com/m00seee/Klipper-Backup-Restore-tool/main/menu.sh`
 
 Make the script executable 
 
