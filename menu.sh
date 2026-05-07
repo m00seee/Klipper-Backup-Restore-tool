@@ -107,6 +107,14 @@ build_remote_url() {
   esac
 }
 
+build_public_url() {
+  case "$GIT_PROVIDER" in
+    github) echo "https://github.com/${GIT_REPO}.git" ;;
+    gitlab) echo "https://gitlab.com/${GIT_REPO}.git" ;;
+    gitea)  echo "https://${GITEA_HOST}/${GIT_REPO}.git" ;;
+  esac
+}
+
 # ── Dependency check ────────────────────────────────────────────────────────────
 check_deps() {
   step "Checking dependencies"
@@ -432,20 +440,19 @@ quick_restore() {
   else
     GITEA_HOST=""
   fi
-  ask        GIT_USERNAME "Username"
-  ask_secret GIT_TOKEN    "Personal access token"
   case "$GIT_PROVIDER" in
     github|gitea) info "Repository format:  username/repo-name" ;;
     gitlab)       info "Repository format:  username/repo  or  group/subgroup/repo" ;;
   esac
   ask GIT_REPO   "Repository path"
   ask GIT_BRANCH "Branch" "main"
+  GIT_USERNAME="" GIT_TOKEN=""
 
   _do_quick_restore
 }
 
 _do_quick_restore() {
-  local url; url=$(build_remote_url)
+  local url; url=$(build_public_url)
   local tmp_dir; tmp_dir=$(mktemp -d)
 
   start_spinner "Cloning from ${GIT_PROVIDER}..."
@@ -453,6 +460,20 @@ _do_quick_restore() {
   clone_output=$(git clone --depth 1 --branch "$GIT_BRANCH" "$url" "$tmp_dir" 2>&1)
   local exit_code=$?
   stop_spinner
+
+  # If auth failure, ask for a token and retry once
+  if [[ $exit_code -ne 0 ]] && echo "$clone_output" | grep -qi "authentication\|could not read username\|bad credentials\|403\|forbidden"; then
+    rm -rf "$tmp_dir"; tmp_dir=$(mktemp -d)
+    warn "Repository appears to be private — a token is required."
+    echo
+    ask        GIT_USERNAME "Username"
+    ask_secret GIT_TOKEN    "Personal access token"
+    url=$(build_remote_url)
+    start_spinner "Retrying with token..."
+    clone_output=$(git clone --depth 1 --branch "$GIT_BRANCH" "$url" "$tmp_dir" 2>&1)
+    exit_code=$?
+    stop_spinner
+  fi
 
   if [[ $exit_code -ne 0 ]]; then
     err "Clone failed"
@@ -463,10 +484,9 @@ _do_quick_restore() {
       select_provider
       echo
       [[ "$GIT_PROVIDER" == "gitea" ]] && ask GITEA_HOST "Gitea hostname"
-      ask        GIT_USERNAME "Username"
-      ask_secret GIT_TOKEN    "Personal access token"
       ask GIT_REPO   "Repository path"
       ask GIT_BRANCH "Branch" "main"
+      GIT_USERNAME="" GIT_TOKEN=""
       _do_quick_restore
     fi
     return
