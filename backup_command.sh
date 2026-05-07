@@ -22,6 +22,7 @@ git remote set-url origin "$REMOTE_URL" 2>/dev/null \
 
 log "Pulling latest changes..."
 git pull --rebase origin "$GIT_BRANCH" 2>&1 \
+  || git pull --rebase --allow-unrelated-histories origin "$GIT_BRANCH" 2>&1 \
   || log "WARNING: Pull failed — will still attempt to push local changes"
 
 log "Staging all changes..."

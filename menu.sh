@@ -415,18 +415,18 @@ run_setup() {
   if confirm "Push an initial backup to ${GIT_PROVIDER} now?" "y"; then
     echo
     cd "$KLIPPER_CONFIG"
+    # Pull first in case the remote was initialised with a README or other commit
+    git pull --rebase --allow-unrelated-histories origin "$GIT_BRANCH" 2>/dev/null || true
     git add -A
     if ! git diff --cached --quiet; then
       git commit -m "Initial backup ($(date '+%Y-%m-%d %H:%M:%S'))"
-      if git push -u origin "$GIT_BRANCH" 2>/dev/null; then
-        ok "Initial backup pushed"
-      elif git push --set-upstream origin "HEAD:refs/heads/${GIT_BRANCH}"; then
-        ok "Initial backup pushed (branch '${GIT_BRANCH}' created)"
-      else
-        err "Initial push failed — run a manual Backup from the main menu."
-      fi
+    fi
+    if git push -u origin "$GIT_BRANCH" 2>/dev/null; then
+      ok "Initial backup pushed"
+    elif git push --set-upstream origin "HEAD:refs/heads/${GIT_BRANCH}"; then
+      ok "Initial backup pushed (branch '${GIT_BRANCH}' created)"
     else
-      info "Nothing to commit for initial backup."
+      err "Initial push failed — run a manual Backup from the main menu."
     fi
   fi
 
