@@ -235,6 +235,7 @@ SCRIPT
 # ── Write Klipper config files ──────────────────────────────────────────────────
 install_configs() {
   local printer_cfg="$KLIPPER_CONFIG/printer.cfg"
+  local provider_upper; provider_upper=$(echo "$GIT_PROVIDER" | tr '[:lower:]' '[:upper:]')
 
   cat > "$KLIPPER_CONFIG/backup.cfg" <<EOF
 [gcode_shell_command backup_to_git]
@@ -242,11 +243,11 @@ command: bash /home/${USER}/backup_command.sh
 timeout: 300.
 verbose: True
 
-[gcode_macro BACKUP]
+[gcode_macro BACKUP_TO_${provider_upper}]
 gcode:
     RUN_SHELL_COMMAND CMD=backup_to_git
 EOF
-  ok "backup.cfg written"
+  ok "backup.cfg written (macro: BACKUP_TO_${provider_upper})"
   if [[ -f "$printer_cfg" ]]; then
     grep -q "include backup.cfg" "$printer_cfg" \
       || { sed -i '1 i\[include backup.cfg]\n' "$printer_cfg"; ok "backup.cfg included in printer.cfg"; }
@@ -260,11 +261,11 @@ command: bash /home/${USER}/restore_command.sh
 timeout: 300.
 verbose: True
 
-[gcode_macro RESTORE]
+[gcode_macro RESTORE_FROM_${provider_upper}]
 gcode:
     RUN_SHELL_COMMAND CMD=restore_from_git
 EOF
-  ok "restore.cfg written"
+  ok "restore.cfg written (macro: RESTORE_FROM_${provider_upper})"
   if [[ -f "$printer_cfg" ]]; then
     grep -q "include restore.cfg" "$printer_cfg" \
       || { sed -i '1 i\[include restore.cfg]\n' "$printer_cfg"; ok "restore.cfg included in printer.cfg"; }
