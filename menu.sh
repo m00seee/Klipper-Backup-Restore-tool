@@ -236,8 +236,7 @@ SCRIPT
 install_configs() {
   local printer_cfg="$KLIPPER_CONFIG/printer.cfg"
 
-  if [[ ! -f "$KLIPPER_CONFIG/backup.cfg" ]]; then
-    cat > "$KLIPPER_CONFIG/backup.cfg" <<EOF
+  cat > "$KLIPPER_CONFIG/backup.cfg" <<EOF
 [gcode_shell_command backup_to_git]
 command: bash /home/${USER}/backup_command.sh
 timeout: 300.
@@ -247,19 +246,15 @@ verbose: True
 gcode:
     RUN_SHELL_COMMAND CMD=backup_to_git
 EOF
-    ok "backup.cfg created"
-    if [[ -f "$printer_cfg" ]]; then
-      grep -q "include backup.cfg" "$printer_cfg" \
-        || { sed -i '1 i\[include backup.cfg]\n' "$printer_cfg"; ok "backup.cfg included in printer.cfg"; }
-    else
-      warn "printer.cfg not found — add [include backup.cfg] manually"
-    fi
+  ok "backup.cfg written"
+  if [[ -f "$printer_cfg" ]]; then
+    grep -q "include backup.cfg" "$printer_cfg" \
+      || { sed -i '1 i\[include backup.cfg]\n' "$printer_cfg"; ok "backup.cfg included in printer.cfg"; }
   else
-    ok "backup.cfg already exists"
+    warn "printer.cfg not found — add [include backup.cfg] manually"
   fi
 
-  if [[ ! -f "$KLIPPER_CONFIG/restore.cfg" ]]; then
-    cat > "$KLIPPER_CONFIG/restore.cfg" <<EOF
+  cat > "$KLIPPER_CONFIG/restore.cfg" <<EOF
 [gcode_shell_command restore_from_git]
 command: bash /home/${USER}/restore_command.sh
 timeout: 300.
@@ -269,15 +264,12 @@ verbose: True
 gcode:
     RUN_SHELL_COMMAND CMD=restore_from_git
 EOF
-    ok "restore.cfg created"
-    if [[ -f "$printer_cfg" ]]; then
-      grep -q "include restore.cfg" "$printer_cfg" \
-        || { sed -i '1 i\[include restore.cfg]\n' "$printer_cfg"; ok "restore.cfg included in printer.cfg"; }
-    else
-      warn "printer.cfg not found — add [include restore.cfg] manually"
-    fi
+  ok "restore.cfg written"
+  if [[ -f "$printer_cfg" ]]; then
+    grep -q "include restore.cfg" "$printer_cfg" \
+      || { sed -i '1 i\[include restore.cfg]\n' "$printer_cfg"; ok "restore.cfg included in printer.cfg"; }
   else
-    ok "restore.cfg already exists"
+    warn "printer.cfg not found — add [include restore.cfg] manually"
   fi
 }
 
