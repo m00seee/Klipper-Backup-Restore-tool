@@ -1,271 +1,486 @@
 #!/bin/bash
-###########################
-## Klipper Backup & Restore Script ##
-#### Created by m00se #####
-###########################
+#############################################
+## Klipper Backup & Restore Tool
+## Supports GitHub · GitLab · Gitea
+## github.com/m00seee/Klipper-Backup-Restore-tool
+#############################################
 
-###GIT###
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
-#Setup Git connectivity in ~/printer_data/config **Required for new or restore procedures
-gitinit(){
-  printf "\n"
-  echo What is your Git Username?
-  read vargitusername
-  sleep 1
+CONFIG_FILE="$HOME/.klipper_backup.conf"
+KLIPPER_CONFIG="$HOME/printer_data/config"
+KLIPPER_EXTRAS="$HOME/klipper/klippy/extras"
+REPO_RAW="https://raw.githubusercontent.com/m00seee/Klipper-Backup-Restore-tool/main"
 
-  echo What is your Git Email Address?
-  read vargitemail
-  sleep 1
+# ── Output helpers ──────────────────────────────────────────────────────────────
+header() {
+  clear
+  echo -e "${CYAN}${BOLD}"
+  echo "  ╔══════════════════════════════════════════════╗"
+  echo "  ║     Klipper Backup & Restore Tool            ║"
+  echo "  ║     GitHub · GitLab · Gitea                  ║"
+  echo "  ╚══════════════════════════════════════════════╝"
+  echo -e "${NC}"
+}
+ok()   { echo -e "  ${GREEN}✓${NC} $*"; }
+err()  { echo -e "  ${RED}✗${NC} $*" >&2; }
+info() { echo -e "  ${BLUE}→${NC} $*"; }
+warn() { echo -e "  ${YELLOW}⚠${NC} $*"; }
+step() { echo -e "\n  ${BOLD}━━ $* ━━${NC}"; }
 
-  echo What is your Git Token
-  read vargittoken
-  sleep 1
-
-  echo What is your Git Repository URL
-  read gitrepo
-  #Remove HTTPS/HTTP
-  vargitrepo=("${gitrepo##*//}")
-
-  printf "\nYou have provided the following Git details:"
-  printf "\nGit Username: $vargitusername"
-  printf "\nGit Email Address: $vargitemail"
-  printf "\nGit Token: $vargittoken"
-  printf "\nGit Repo: $vargitrepo\n"
-  
-  printf "\nIf these details are correct type yes otherwise press any key: "
-  read vargitresponse
-
-  if [ "$vargitresponse" != "y" -a "$vargitresponse" != "Y" -a "$vargitresponse" != "Yes" -a "$vargitresponse" != "yes" ]; then
-    gitinit
+# ── Spinner ─────────────────────────────────────────────────────────────────────
+_spid=""
+start_spinner() {
+  local msg="$1" i=0 s='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  ( while true; do
+      printf "\r  ${CYAN}${s:$i:1}${NC}  $msg"
+      i=$(( (i+1) % ${#s} )); sleep 0.1
+    done ) &
+  _spid=$!
+}
+stop_spinner() {
+  if [[ -n "$_spid" ]]; then
+    kill "$_spid" 2>/dev/null; wait "$_spid" 2>/dev/null
+    _spid=""; printf "\r\033[K"
   fi
-
-  cd ~/printer_data/config
-  git init
-  sleep 1
-  git config --global user.name "$vargitusername"
-  git config --global user.email "$vargitemail"
-  git remote add origin https://$vargitusername:$vargittoken@$vargitrepo
 }
+trap stop_spinner EXIT INT TERM
 
-#Creates first backup when setting up the script for the first time
-gitnew(){
-  cd ~/printer_data/config/
-  git add .
-  git commit -m "Initial backup"
-  git push -u origin master
-  sleep 1
-  echo Setup has been completed
-}
-
-
-###gcode_shell_command.py###
-
-#Download gcode_shell_command.py and place it in~/klipper/klippy/extras/
-addshellcommand(){ 
-  cd ~/klipper/klippy/extras/
-  wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/gcode_shell_command.py
-  sleep 1
-}
-
-##Configuration Files###
-
-#Download backup.cfg and add it to ~/printer_data/config/
-addbackupcfg(){
-  cd ~/printer_data/config/
-  wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/backup.cfg
-  printf "\n[Backup Config File]\n"
-  echo backup.cfg has been downloaded and placed in ~/printer_data/config/
-  sleep 1
-  sed -i 's|replaceme|/home/'$USER'/backup_command.sh |g' ~/printer_data/config/backup.cfg
-  echo backup path has been added to the backup.cfg
-  sleep 1
-}
-
-#Download restore.cfg and add it to ~/printer_data/config/
-addrestorecfg(){
-  cd ~/printer_data/config/
-  wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/restore.cfg
-  printf "\n[Restore Config File]\n"
-  echo restore.cfg has been downloaded and placed in ~/printer_data/config/
-  sleep 1
-  sed -i 's|replaceme|/home/'$USER'/restore_command.sh |g' ~/printer_data/config/restore.cfg
-  echo backup path has been added to the restore.cfg
-  sleep 1
-}
-
-##MACROS###
-
-#Add a macro to include backup.cfg into printer.cfg
-addbackupmacro(){  
-  sed -i '1 i\[include backup.cfg]\n' ~/printer_data/config/printer.cfg
-  sleep 1
-}
-
-#Add a macro to include restore.cfg into printer.cfg
-addrestoremacro(){   
-  sed -i '1 i\[include restore.cfg]\n' ~/printer_data/config/printer.cfg
-  sleep 1
-}
-
-addbackupcommand(){
-    cd /home/$USER/
-    if [ ! -f "backup_command.sh" ]; then
-      wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/backup_command.sh
-      
-    fi
-}
-
-#The backup command to push backups to githhub
-backupcommand(){
-    /bin/bash backup_command.sh
-    exit
-}
-
-addrestorecommand(){
-    cd /home/$USER/
-    if [ ! -f "restore_command.sh" ]; then
-      wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/restore_command.sh
-    fi
-}
-
-restorecommand(){
-    /bin/bash restore_command.sh
-    exit
-}
-
-checks(){
-  #Check if gcode_shell_command.py is installed if not download and add it
-  shellcommandpath=~/klipper/klippy/extras/gcode_shell_command.py
-  if [ ! -f "$shellcommandpath" ]; then
-    printf "\n[Shell Command]\n"
-    echo gcode_shell_command.py is not in Klippy Extras
-    sleep 1
-    addshellcommand
-    echo gcode_shell_command.py has now been added to Klippy Extras
-  fi
-  
-  #Check if backup.cfg exists, if not download and add it
-  backupcfg=~/printer_data/config/backup.cfg
-  if [ ! -f "$backupcfg" ]; then
-    printf "\n[Backup Config]\n"
-    echo backup.cfg has now been downloaded and configured
-    sleep 1
-    addbackupcfg
-    addbackupmacro
-    echo backup.cfg has been included in printer.cfg
-  fi
-
-  #Check if restorecfg.cfg exists, if not download and add it
-  restorecfg=~/printer_data/config/restore.cfg
-  if [ ! -f "$restorecfg" ]; then
-    printf "\n[Restore Config]\n"
-    echo restore.cfg has now been downloaded and configured
-    sleep 1
-    addrestorecfg
-    addrestoremacro
-    echo restore.cfg has been included in printer.cfg
-  fi
-
-  #Check if backup_command.sh exists, if not download
-  backupcommandsh=/home/$USER/backup_command.sh
-  if [ ! -f "$backupcommandsh" ]; then
-    sleep 1
-    printf "\n[Backup Command Script]\n"
-    echo backup_command.sh does not exist, downloading file....
-    addbackupcommand
-    echo backup_command.sh has now been downloaded
-  fi
-
-  #Check if restore_command.sh exists, if not download
-  restorecommandsh=/home/$USER/restore_command.sh
-  if [ ! -f "$restorecommandsh" ]; then
-    sleep 1
-    printf "\n[Restore Command Script]\n"
-    echo restore_command.sh does not exist, downloading file....
-    addrestorecommand
-    echo restore_command.sh now been downloaded
-  fi
-  
-  #Check if git has been configured in ~/printer_data/config/.git
-  gitpath=~/printer_data/config/.git
-  if [ ! -d "$gitpath" ]; then
-    echo Git has not been configured yet
-    sleep 1
-    gitinit
-  fi
-  sleep 1
-}
-
-addrestorecommand(){
-    cd /home/$USER/
-    if [ ! -f "restore_command.sh" ]; then
-      echo restore_command.sh does not exist, downloading file....
-      wget -q https://raw.githubusercontent.com/housam-s/Klipper-Backup-Restore-tool/main/restore_command.sh
-    fi
-}
-
-restorecommand(){
-    /bin/bash restore_command.sh
-    checks
-    exit
-}
-
-#Controlling Task
-run(){
-  printf "Klippy Backup\nCreated by m00se"
-  gitpath=~/printer_data/config/.git
-  if [ ! -d "$gitpath" ]; then
-    printf '\n\nAre you configuring backups for a new printer or restoring from an old one?\n'
-    select option in New Restore
-    do
-            case $option in 
-            New|Restore)   
-                    break
-                    ;;
-            *)
-                    echo "Invalid selection" 
-                    ;;
-            esac
-    done
-  
-    if [ $option = "New" ]; then
-      gitinit
-      checks
-      gitnew
-      printf "\nSetup Completed\n"
-      exit
-    elif [ $option = "Restore" ]; then
-      gitinit
-      checks
-      restorecommand
-      printf "\nRestore Completed\n"
-      exit
-    fi
-  fi
-  
-  printf "\nConfirming requirements are met\n"
-  checks
-
-  printf '\nPlease select one of the following options\n'
-
-  select option in Backup Restore
-  do
-          case $option in 
-          Backup|Restore)   
-                  break
-                  ;;
-          *)
-                  echo "Invalid selection" 
-                  ;;
-          esac
+# ── Input helpers ───────────────────────────────────────────────────────────────
+ask() {
+  local _var="$1" _prompt="$2" _default="${3:-}" _val
+  while true; do
+    [[ -n "$_default" ]] \
+      && printf "  ${BOLD}%s${NC} [%s]: " "$_prompt" "$_default" \
+      || printf "  ${BOLD}%s${NC}: " "$_prompt"
+    read -r _val; _val="${_val:-$_default}"
+    if [[ -n "$_val" ]]; then printf -v "$_var" '%s' "$_val"; return; fi
+    err "This field cannot be empty."
   done
+}
 
-  if [ $option = "Backup" ]; then
-    addbackupcommand
-    backupcommand
-  elif [ $option = "Restore" ]; then
-    addrestorecommand
-    restorecommand
+ask_secret() {
+  local _var="$1" _prompt="$2" _val
+  while true; do
+    printf "  ${BOLD}%s${NC}: " "$_prompt"; read -rs _val; echo
+    if [[ -n "$_val" ]]; then printf -v "$_var" '%s' "$_val"; return; fi
+    err "This field cannot be empty."
+  done
+}
+
+confirm() {
+  local _prompt="$1" _default="${2:-n}" _in
+  [[ "$_default" == "y" ]] \
+    && printf "  ${BOLD}%s${NC} [Y/n]: " "$_prompt" \
+    || printf "  ${BOLD}%s${NC} [y/N]: " "$_prompt"
+  read -r _in; _in="${_in:-$_default}"
+  [[ "$_in" =~ ^[Yy]$ ]]
+}
+
+# ── Config ──────────────────────────────────────────────────────────────────────
+load_config() {
+  [[ -f "$CONFIG_FILE" ]] || return 1
+  # shellcheck source=/dev/null
+  source "$CONFIG_FILE"
+}
+
+save_config() {
+  cat > "$CONFIG_FILE" <<EOF
+GIT_PROVIDER="${GIT_PROVIDER}"
+GIT_USERNAME="${GIT_USERNAME}"
+GIT_EMAIL="${GIT_EMAIL}"
+GIT_TOKEN="${GIT_TOKEN}"
+GIT_REPO="${GIT_REPO}"
+GIT_BRANCH="${GIT_BRANCH}"
+GITEA_HOST="${GITEA_HOST:-}"
+EOF
+  chmod 600 "$CONFIG_FILE"
+  ok "Config saved to $CONFIG_FILE (mode 600)"
+}
+
+build_remote_url() {
+  case "$GIT_PROVIDER" in
+    github) echo "https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_REPO}.git" ;;
+    gitlab) echo "https://oauth2:${GIT_TOKEN}@gitlab.com/${GIT_REPO}.git" ;;
+    gitea)  echo "https://${GIT_USERNAME}:${GIT_TOKEN}@${GITEA_HOST}/${GIT_REPO}.git" ;;
+  esac
+}
+
+# ── Dependency check ────────────────────────────────────────────────────────────
+check_deps() {
+  step "Checking dependencies"
+  local fail=0
+  for dep in git wget; do
+    command -v "$dep" &>/dev/null \
+      && ok "$dep found" \
+      || { err "$dep not found — fix with: sudo apt-get install $dep -y"; fail=1; }
+  done
+  if [[ ! -d "$KLIPPER_CONFIG" ]]; then
+    err "Klipper config directory not found: $KLIPPER_CONFIG"
+    warn "Ensure Klipper is installed before running this tool."
+    fail=1
+  else
+    ok "Klipper config directory found"
+  fi
+  [[ $fail -eq 1 ]] && { echo; err "Resolve the issues above, then re-run."; exit 1; }
+}
+
+# ── Install gcode_shell_command.py ──────────────────────────────────────────────
+install_shell_command() {
+  local dest="$KLIPPER_EXTRAS/gcode_shell_command.py"
+  if [[ -f "$dest" ]]; then
+    ok "gcode_shell_command.py already installed"
+    return
+  fi
+  mkdir -p "$KLIPPER_EXTRAS"
+  if wget -q -O "$dest" "$REPO_RAW/gcode_shell_command.py"; then
+    ok "gcode_shell_command.py installed to $KLIPPER_EXTRAS"
+  else
+    err "Failed to download gcode_shell_command.py"
+    exit 1
   fi
 }
-run
+
+# ── Write shell scripts ─────────────────────────────────────────────────────────
+install_scripts() {
+  cat > "$HOME/backup_command.sh" <<'SCRIPT'
+#!/bin/bash
+# shellcheck source=/dev/null
+source "$HOME/.klipper_backup.conf"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+die() { log "ERROR: $1"; exit 1; }
+
+if [[ "$GIT_PROVIDER" == "gitlab" ]]; then
+  REMOTE_URL="https://oauth2:${GIT_TOKEN}@gitlab.com/${GIT_REPO}.git"
+elif [[ "$GIT_PROVIDER" == "gitea" ]]; then
+  REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@${GITEA_HOST}/${GIT_REPO}.git"
+else
+  REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_REPO}.git"
+fi
+
+cd "$HOME/printer_data/config" || die "Cannot access Klipper config directory"
+
+git remote set-url origin "$REMOTE_URL" 2>/dev/null \
+  || git remote add origin "$REMOTE_URL"
+
+log "Pulling latest changes..."
+git pull --rebase origin "$GIT_BRANCH" 2>&1 \
+  || log "WARNING: Pull failed — will still attempt to push local changes"
+
+log "Staging all changes..."
+git add -A
+
+if git diff --cached --quiet; then
+  log "Nothing to commit — config is already up to date."
+  exit 0
+fi
+
+git commit -m "Backup: $(date '+%Y-%m-%d %H:%M:%S')" \
+  || die "Commit failed"
+
+log "Pushing to ${GIT_PROVIDER}..."
+git push origin "$GIT_BRANCH" \
+  || die "Push failed — check token permissions and repository path"
+
+log "Backup complete."
+SCRIPT
+  chmod +x "$HOME/backup_command.sh"
+  ok "backup_command.sh written"
+
+  cat > "$HOME/restore_command.sh" <<'SCRIPT'
+#!/bin/bash
+# shellcheck source=/dev/null
+source "$HOME/.klipper_backup.conf"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
+die() { log "ERROR: $1"; exit 1; }
+
+if [[ "$GIT_PROVIDER" == "gitlab" ]]; then
+  REMOTE_URL="https://oauth2:${GIT_TOKEN}@gitlab.com/${GIT_REPO}.git"
+elif [[ "$GIT_PROVIDER" == "gitea" ]]; then
+  REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@${GITEA_HOST}/${GIT_REPO}.git"
+else
+  REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_REPO}.git"
+fi
+
+cd "$HOME/printer_data/config" || die "Cannot access Klipper config directory"
+
+git remote set-url origin "$REMOTE_URL" 2>/dev/null \
+  || git remote add origin "$REMOTE_URL"
+
+log "Fetching from ${GIT_PROVIDER}..."
+git fetch origin \
+  || die "Fetch failed — check your network connection and token"
+
+log "Restoring to origin/${GIT_BRANCH}..."
+git reset --hard "origin/${GIT_BRANCH}" \
+  || die "Reset failed"
+
+log "Restore complete. A Klipper/Moonraker restart may be required."
+SCRIPT
+  chmod +x "$HOME/restore_command.sh"
+  ok "restore_command.sh written"
+}
+
+# ── Write Klipper config files ──────────────────────────────────────────────────
+install_configs() {
+  local printer_cfg="$KLIPPER_CONFIG/printer.cfg"
+
+  if [[ ! -f "$KLIPPER_CONFIG/backup.cfg" ]]; then
+    cat > "$KLIPPER_CONFIG/backup.cfg" <<EOF
+[gcode_shell_command backup_to_git]
+command: bash /home/${USER}/backup_command.sh
+timeout: 300.
+verbose: True
+
+[gcode_macro BACKUP]
+gcode:
+    RUN_SHELL_COMMAND CMD=backup_to_git
+EOF
+    ok "backup.cfg created"
+    if [[ -f "$printer_cfg" ]]; then
+      grep -q "include backup.cfg" "$printer_cfg" \
+        || { sed -i '1 i\[include backup.cfg]\n' "$printer_cfg"; ok "backup.cfg included in printer.cfg"; }
+    else
+      warn "printer.cfg not found — add [include backup.cfg] manually"
+    fi
+  else
+    ok "backup.cfg already exists"
+  fi
+
+  if [[ ! -f "$KLIPPER_CONFIG/restore.cfg" ]]; then
+    cat > "$KLIPPER_CONFIG/restore.cfg" <<EOF
+[gcode_shell_command restore_from_git]
+command: bash /home/${USER}/restore_command.sh
+timeout: 300.
+verbose: True
+
+[gcode_macro RESTORE]
+gcode:
+    RUN_SHELL_COMMAND CMD=restore_from_git
+EOF
+    ok "restore.cfg created"
+    if [[ -f "$printer_cfg" ]]; then
+      grep -q "include restore.cfg" "$printer_cfg" \
+        || { sed -i '1 i\[include restore.cfg]\n' "$printer_cfg"; ok "restore.cfg included in printer.cfg"; }
+    else
+      warn "printer.cfg not found — add [include restore.cfg] manually"
+    fi
+  else
+    ok "restore.cfg already exists"
+  fi
+}
+
+# ── Git initialisation ──────────────────────────────────────────────────────────
+init_git() {
+  cd "$KLIPPER_CONFIG" || { err "Cannot access $KLIPPER_CONFIG"; exit 1; }
+  local remote_url; remote_url=$(build_remote_url)
+
+  git config --global user.name  "$GIT_USERNAME"
+  git config --global user.email "$GIT_EMAIL"
+
+  if [[ -d ".git" ]]; then
+    git remote set-url origin "$remote_url"
+    ok "Git remote URL updated"
+  else
+    git init
+    git symbolic-ref HEAD "refs/heads/${GIT_BRANCH}"
+    git remote add origin "$remote_url"
+    ok "Git initialised (branch: ${GIT_BRANCH})"
+  fi
+}
+
+# ── Provider & credential setup ─────────────────────────────────────────────────
+select_provider() {
+  step "Git Provider"
+  echo
+  echo "  1) GitHub"
+  echo "  2) GitLab"
+  echo "  3) Gitea  (self-hosted)"
+  echo
+  while true; do
+    printf "  ${BOLD}Choose${NC} [1-3]: "
+    read -r _c
+    case "$_c" in
+      1) GIT_PROVIDER="github"; break ;;
+      2) GIT_PROVIDER="gitlab"; break ;;
+      3) GIT_PROVIDER="gitea";  break ;;
+      *) err "Please enter 1, 2, or 3." ;;
+    esac
+  done
+  ok "Provider: ${GIT_PROVIDER}"
+}
+
+enter_credentials() {
+  step "Credentials"
+  echo
+  if [[ "$GIT_PROVIDER" == "gitea" ]]; then
+    ask GITEA_HOST "Gitea hostname (e.g. git.example.com)"
+  else
+    GITEA_HOST=""
+  fi
+  ask        GIT_USERNAME "Username"
+  ask        GIT_EMAIL    "Email address"
+  ask_secret GIT_TOKEN    "Personal access token"
+  echo
+  case "$GIT_PROVIDER" in
+    github|gitea) info "Repository format:  username/repo-name" ;;
+    gitlab)       info "Repository format:  username/repo  or  group/subgroup/repo" ;;
+  esac
+  ask GIT_REPO   "Repository path"
+  ask GIT_BRANCH "Default branch name" "main"
+}
+
+test_connection() {
+  step "Testing connection"
+  local url; url=$(build_remote_url)
+  start_spinner "Connecting to ${GIT_PROVIDER}..."
+  if git ls-remote "$url" &>/dev/null; then
+    stop_spinner
+    ok "Successfully connected to ${GIT_PROVIDER}"
+  else
+    stop_spinner
+    err "Connection failed"
+    warn "Check: token has read/write repo permissions"
+    warn "Check: repository path is correct — ${GIT_REPO}"
+    [[ "$GIT_PROVIDER" == "gitea" ]] && warn "Check: Gitea host is reachable — ${GITEA_HOST}"
+    echo
+    if confirm "Re-enter credentials and retry?"; then
+      enter_credentials
+      test_connection
+    else
+      exit 1
+    fi
+  fi
+}
+
+# ── Backup / Restore actions ────────────────────────────────────────────────────
+run_backup() {
+  step "Backup"
+  echo
+  if bash "$HOME/backup_command.sh"; then
+    echo; ok "Backup complete"
+  else
+    echo; err "Backup failed — see output above"
+  fi
+}
+
+run_restore() {
+  step "Restore"
+  echo
+  warn "This will overwrite your Klipper config with the version stored on ${GIT_PROVIDER}."
+  echo
+  if ! confirm "Continue with restore?"; then
+    info "Restore cancelled."
+    return
+  fi
+  echo
+  if bash "$HOME/restore_command.sh"; then
+    echo; ok "Restore complete"
+    warn "Restart Klipper/Moonraker to apply the restored configuration."
+  else
+    echo; err "Restore failed — see output above"
+  fi
+}
+
+# ── First-time setup wizard ─────────────────────────────────────────────────────
+run_setup() {
+  header
+  step "Welcome — First-time Setup"
+  echo
+  info "This wizard will:"
+  echo "       1. Configure your Git provider and credentials"
+  echo "       2. Set up backup and restore scripts"
+  echo "       3. Install Klipper macros (BACKUP / RESTORE)"
+  echo
+
+  select_provider
+  enter_credentials
+  test_connection
+
+  step "Saving configuration"
+  save_config
+
+  step "Initialising Git"
+  init_git
+
+  step "Installing components"
+  install_shell_command
+  install_scripts
+  install_configs
+
+  step "Initial backup"
+  if confirm "Push an initial backup to ${GIT_PROVIDER} now?" "y"; then
+    echo
+    cd "$KLIPPER_CONFIG"
+    # Pull first in case the remote was initialised with a README or other commit
+    git pull --rebase --allow-unrelated-histories origin "$GIT_BRANCH" 2>/dev/null || true
+    git add -A
+    if ! git diff --cached --quiet; then
+      git commit -m "Initial backup ($(date '+%Y-%m-%d %H:%M:%S'))"
+    fi
+    if git push -u origin "$GIT_BRANCH" 2>/dev/null; then
+      ok "Initial backup pushed"
+    elif git push --set-upstream origin "HEAD:refs/heads/${GIT_BRANCH}"; then
+      ok "Initial backup pushed (branch '${GIT_BRANCH}' created)"
+    else
+      err "Initial push failed — run a manual Backup from the main menu."
+    fi
+  fi
+
+  echo
+  ok "Setup complete!"
+  warn "A reboot is recommended so Klipper loads the new macros."
+  echo
+  if confirm "Reboot now?" "n"; then
+    sudo reboot
+  fi
+}
+
+# ── Main menu ───────────────────────────────────────────────────────────────────
+main_menu() {
+  while true; do
+    header
+    load_config
+    echo -e "  ${CYAN}Provider:${NC} ${GIT_PROVIDER}   ${CYAN}Repo:${NC} ${GIT_REPO}   ${CYAN}Branch:${NC} ${GIT_BRANCH}\n"
+    echo "  1) Backup now"
+    echo "  2) Restore from ${GIT_PROVIDER}"
+    echo "  3) Reconfigure"
+    echo "  4) Exit"
+    echo
+    printf "  ${BOLD}Choose${NC} [1-4]: "
+    read -r _choice
+
+    case "$_choice" in
+      1) run_backup ;;
+      2) run_restore ;;
+      3)
+        select_provider
+        enter_credentials
+        test_connection
+        save_config
+        init_git
+        install_scripts
+        install_configs
+        ;;
+      4) echo; exit 0 ;;
+      *) err "Invalid option — enter 1, 2, 3, or 4." ;;
+    esac
+
+    echo
+    printf "  Press Enter to return to menu..."
+    read -r
+  done
+}
+
+# ── Entry point ─────────────────────────────────────────────────────────────────
+check_deps
+
+if load_config; then
+  main_menu
+else
+  run_setup
+  main_menu
+fi
