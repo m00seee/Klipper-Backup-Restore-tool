@@ -122,7 +122,7 @@ check_deps() {
   for dep in git wget; do
     command -v "$dep" &>/dev/null \
       && ok "$dep found" \
-      || { err "$dep not found — fix with: sudo apt-get install $dep -y"; fail=1; }
+      || { err "$dep not found — fix with: sudo apt install $dep -y"; fail=1; }
   done
   if [[ ! -d "$KLIPPER_CONFIG" ]]; then
     err "Klipper config directory not found: $KLIPPER_CONFIG"

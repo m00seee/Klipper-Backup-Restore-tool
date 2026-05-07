@@ -12,7 +12,7 @@ Back up your Klipper config to GitHub, GitLab, or Gitea and restore it onto any 
 - `git` and `wget` installed on the printer:
 
 ```bash
-sudo apt-get install git wget -y
+sudo apt install git wget -y
 ```
 
 ---
