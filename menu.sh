@@ -405,6 +405,86 @@ test_connection() {
   fi
 }
 
+# ── Quick Restore ───────────────────────────────────────────────────────────────
+quick_restore() {
+  step "Quick Restore"
+  echo
+  info "Downloads your config files directly from your repository."
+  info "No git setup, no macros — just your files restored fast."
+  echo
+  warn "This will overwrite files in ${KLIPPER_CONFIG}"
+  echo
+
+  # If saved config exists, offer to reuse it
+  if load_config 2>/dev/null && [[ -n "${GIT_REPO:-}" ]]; then
+    info "Saved config found: ${GIT_PROVIDER} — ${GIT_REPO} (${GIT_BRANCH})"
+    if confirm "Use these saved settings?" "y"; then
+      _do_quick_restore
+      return
+    fi
+  fi
+
+  # Otherwise collect the minimum needed
+  select_provider
+  echo
+  if [[ "$GIT_PROVIDER" == "gitea" ]]; then
+    ask GITEA_HOST "Gitea hostname (e.g. git.example.com)"
+  else
+    GITEA_HOST=""
+  fi
+  ask        GIT_USERNAME "Username"
+  ask_secret GIT_TOKEN    "Personal access token"
+  case "$GIT_PROVIDER" in
+    github|gitea) info "Repository format:  username/repo-name" ;;
+    gitlab)       info "Repository format:  username/repo  or  group/subgroup/repo" ;;
+  esac
+  ask GIT_REPO   "Repository path"
+  ask GIT_BRANCH "Branch" "main"
+
+  _do_quick_restore
+}
+
+_do_quick_restore() {
+  local url; url=$(build_remote_url)
+  local tmp_dir; tmp_dir=$(mktemp -d)
+
+  start_spinner "Cloning from ${GIT_PROVIDER}..."
+  local clone_output
+  clone_output=$(git clone --depth 1 --branch "$GIT_BRANCH" "$url" "$tmp_dir" 2>&1)
+  local exit_code=$?
+  stop_spinner
+
+  if [[ $exit_code -ne 0 ]]; then
+    err "Clone failed"
+    echo "$clone_output" | sed 's/^/    /'
+    rm -rf "$tmp_dir"
+    echo
+    if confirm "Retry with different details?"; then
+      select_provider
+      echo
+      [[ "$GIT_PROVIDER" == "gitea" ]] && ask GITEA_HOST "Gitea hostname"
+      ask        GIT_USERNAME "Username"
+      ask_secret GIT_TOKEN    "Personal access token"
+      ask GIT_REPO   "Repository path"
+      ask GIT_BRANCH "Branch" "main"
+      _do_quick_restore
+    fi
+    return
+  fi
+
+  info "Copying files to ${KLIPPER_CONFIG}..."
+  # Copy everything except the .git directory
+  rsync -a --exclude='.git' "$tmp_dir/" "$KLIPPER_CONFIG/" 2>/dev/null \
+    || cp -r "$tmp_dir"/. "$KLIPPER_CONFIG/" && rm -rf "$KLIPPER_CONFIG/.git"
+  rm -rf "$tmp_dir"
+
+  echo
+  ok "Quick restore complete!"
+  warn "Restart Klipper/Moonraker to apply the restored configuration."
+  echo
+  info "To set up automatic backups, run ${BOLD}./menu.sh${NC}${BLUE} again and choose Full Setup."
+}
+
 # ── Backup / Restore actions ────────────────────────────────────────────────────
 run_backup() {
   step "Backup"
@@ -437,7 +517,23 @@ run_restore() {
 # ── First-time setup wizard ─────────────────────────────────────────────────────
 run_setup() {
   header
-  step "Welcome — First-time Setup"
+  step "Welcome"
+  echo
+  echo "  1) Full Setup    — configure backups and install Klipper macros"
+  echo "  2) Quick Restore — just pull my config files from a repo, nothing else"
+  echo
+  while true; do
+    printf "  ${BOLD}Choose${NC} [1-2]: "
+    read -r _c
+    case "$_c" in
+      1) break ;;
+      2) quick_restore; exit 0 ;;
+      *) err "Please enter 1 or 2." ;;
+    esac
+  done
+
+  header
+  step "Full Setup"
   echo
   info "This wizard will:"
   echo "       1. Configure your Git provider and credentials"
@@ -496,16 +592,18 @@ main_menu() {
     echo -e "  ${CYAN}Provider:${NC} ${GIT_PROVIDER}   ${CYAN}Repo:${NC} ${GIT_REPO}   ${CYAN}Branch:${NC} ${GIT_BRANCH}\n"
     echo "  1) Backup now"
     echo "  2) Restore from ${GIT_PROVIDER}"
-    echo "  3) Reconfigure"
-    echo "  4) Exit"
+    echo "  3) Quick Restore (clone only, no setup)"
+    echo "  4) Reconfigure"
+    echo "  5) Exit"
     echo
-    printf "  ${BOLD}Choose${NC} [1-4]: "
+    printf "  ${BOLD}Choose${NC} [1-5]: "
     read -r _choice
 
     case "$_choice" in
       1) run_backup ;;
       2) run_restore ;;
-      3)
+      3) quick_restore ;;
+      4)
         select_provider
         enter_credentials
         test_connection
@@ -514,8 +612,8 @@ main_menu() {
         install_scripts
         install_configs
         ;;
-      4) echo; exit 0 ;;
-      *) err "Invalid option — enter 1, 2, 3, or 4." ;;
+      5) echo; exit 0 ;;
+      *) err "Invalid option — enter 1 to 5." ;;
     esac
 
     echo
