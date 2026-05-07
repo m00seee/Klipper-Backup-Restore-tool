@@ -337,22 +337,71 @@ test_connection() {
   step "Testing connection"
   local url; url=$(build_remote_url)
   start_spinner "Connecting to ${GIT_PROVIDER}..."
-  if git ls-remote "$url" &>/dev/null; then
-    stop_spinner
+  local git_output
+  git_output=$(git ls-remote "$url" 2>&1)
+  local exit_code=$?
+  stop_spinner
+
+  if [[ $exit_code -eq 0 ]]; then
     ok "Successfully connected to ${GIT_PROVIDER}"
-  else
-    stop_spinner
-    err "Connection failed"
-    warn "Check: token has read/write repo permissions"
-    warn "Check: repository path is correct — ${GIT_REPO}"
-    [[ "$GIT_PROVIDER" == "gitea" ]] && warn "Check: Gitea host is reachable — ${GITEA_HOST}"
+    return
+  fi
+
+  err "Connection failed"
+  echo
+
+  # Give specific guidance based on the error output
+  if echo "$git_output" | grep -qi "could not resolve host"; then
+    warn "Cannot reach the server — check your network connection."
+    [[ "$GIT_PROVIDER" == "gitea" ]] && warn "Also verify the Gitea hostname is correct: ${GITEA_HOST}"
+
+  elif echo "$git_output" | grep -qi "authentication failed\|could not read username\|invalid username or password\|bad credentials"; then
+    warn "Authentication failed — your token was rejected."
     echo
-    if confirm "Re-enter credentials and retry?"; then
-      enter_credentials
-      test_connection
-    else
-      exit 1
-    fi
+    case "$GIT_PROVIDER" in
+      github)
+        info "For a classic token:       Settings → Developer settings → Tokens (classic)"
+        info "                           Tick the 'repo' scope"
+        info "For a fine-grained token:  Settings → Developer settings → Fine-grained tokens"
+        info "                           Set Contents to Read and Write on your repo"
+        ;;
+      gitlab)
+        info "Token needs:  read_repository  and  write_repository  scopes"
+        ;;
+      gitea)
+        info "Regenerate your token in Gitea under Settings → Applications"
+        ;;
+    esac
+
+  elif echo "$git_output" | grep -qi "repository not found\|not found\|404"; then
+    warn "Repository not found — check the path is correct."
+    info "Expected format:  username/repo-name  (no https://, no .git)"
+    info "Your current value:  ${GIT_REPO}"
+    [[ "$GIT_PROVIDER" == "github" ]] && info "Also ensure the repository exists on GitHub before running setup."
+
+  elif echo "$git_output" | grep -qi "permission\|403\|forbidden"; then
+    warn "Permission denied — your token doesn't have write access to this repo."
+    case "$GIT_PROVIDER" in
+      github)
+        info "Classic token:       ensure the 'repo' scope is ticked"
+        info "Fine-grained token:  set Contents to Read and Write (not Read-only)"
+        ;;
+      gitlab)
+        info "Token needs write_repository scope, not just read_repository"
+        ;;
+    esac
+
+  else
+    warn "Unexpected error — full output below:"
+    echo "$git_output" | sed 's/^/    /'
+  fi
+
+  echo
+  if confirm "Re-enter credentials and retry?"; then
+    enter_credentials
+    test_connection
+  else
+    exit 1
   fi
 }
 
