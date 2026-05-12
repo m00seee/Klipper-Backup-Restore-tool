@@ -24,13 +24,12 @@ log "Staging local changes..."
 git update-index --refresh -q 2>/dev/null || true
 git add -A
 
-if [[ -z "$(git status --porcelain)" ]]; then
-  log "Nothing to commit — config is already up to date."
-  exit 0
+if [[ -n "$(git status --porcelain)" ]]; then
+  git commit -m "Backup: $(date '+%Y-%m-%d %H:%M:%S')" \
+    || die "Commit failed"
+else
+  log "No new changes to commit."
 fi
-
-git commit -m "Backup: $(date '+%Y-%m-%d %H:%M:%S')" \
-  || die "Commit failed"
 
 log "Pushing to ${GIT_PROVIDER}..."
 git push origin "$GIT_BRANCH" \
