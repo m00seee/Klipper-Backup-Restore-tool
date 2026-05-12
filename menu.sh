@@ -173,11 +173,8 @@ cd "$HOME/printer_data/config" || die "Cannot access Klipper config directory"
 git remote set-url origin "$REMOTE_URL" 2>/dev/null \
   || git remote add origin "$REMOTE_URL"
 
-log "Pulling latest changes..."
-git pull --rebase origin "$GIT_BRANCH" 2>&1 \
-  || log "WARNING: Pull failed — will still attempt to push local changes"
-
-log "Staging all changes..."
+# Stage and commit local changes BEFORE pulling so they are never overwritten
+log "Staging local changes..."
 git add -A
 
 if git diff --cached --quiet; then
@@ -187,6 +184,12 @@ fi
 
 git commit -m "Backup: $(date '+%Y-%m-%d %H:%M:%S')" \
   || die "Commit failed"
+
+# Pull remote history and replay our commit on top, then push
+log "Syncing with ${GIT_PROVIDER}..."
+git pull --rebase origin "$GIT_BRANCH" 2>&1 \
+  || git pull --rebase --allow-unrelated-histories origin "$GIT_BRANCH" 2>&1 \
+  || log "WARNING: Pull failed — attempting push anyway"
 
 log "Pushing to ${GIT_PROVIDER}..."
 git push origin "$GIT_BRANCH" \
