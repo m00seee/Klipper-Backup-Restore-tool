@@ -340,8 +340,8 @@ enter_credentials() {
 select_backup_scope() {
   step "Backup Scope"
   echo
-  echo "  1) Config only     — printer_data/config  (recommended)"
-  echo "  2) Full printer data — printer_data  (includes database, history, gcodes)"
+  echo "  1) Config only       — printer_data/config  (recommended)"
+  echo "  2) Full printer data — printer_data  (includes database and print history)"
   echo
   while true; do
     printf "  ${BOLD}Choose${NC} [1-2]: "
@@ -349,27 +349,19 @@ select_backup_scope() {
     case "$_c" in
       1)
         BACKUP_PATH="$HOME/printer_data/config"
-        INCLUDE_GCODES="false"
         ok "Scope: config only"
         break
         ;;
       2)
         BACKUP_PATH="$HOME/printer_data"
-        echo
-        warn "G-code files can be very large and will count against your repo size limit."
-        if confirm "Include gcodes in the backup?"; then
-          INCLUDE_GCODES="true"
-          ok "Scope: full printer_data (including gcodes)"
-        else
-          INCLUDE_GCODES="false"
-          ok "Scope: full printer_data (gcodes excluded)"
-        fi
+        ok "Scope: full printer_data"
         warn "Moonraker database files may be locked during backup — a brief pause is normal."
         break
         ;;
       *) err "Please enter 1 or 2." ;;
     esac
   done
+  INCLUDE_GCODES="false"
 }
 
 write_gitignore() {

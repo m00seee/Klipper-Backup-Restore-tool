@@ -55,13 +55,14 @@ During setup you can choose what to back up:
 | Option | What's included |
 |--------|----------------|
 | **Config only** *(recommended)* | `printer_data/config` — all your Klipper config files |
-| **Full printer data** | `printer_data` — config, Moonraker database, print history, and optionally gcodes |
+| **Full printer data** | `printer_data` — config, Moonraker database, and print history |
 
-If you choose **Full printer data**, you'll be asked separately whether to include g-code files. G-codes can be very large — GitHub recommends keeping repos under 1GB. The following are always excluded regardless of scope:
+The following are always excluded regardless of scope:
 
 - `logs/` — not useful to restore
 - `comms/` — runtime socket files
 - `tmp/`
+- `gcodes/` — too large for a git repo
 - `.moonraker.db-journal` — rebuilt automatically on startup
 
 > **Note:** Moonraker database files may be briefly locked during backup. This is normal.
