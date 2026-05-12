@@ -21,9 +21,10 @@ git remote set-url origin "$REMOTE_URL" 2>/dev/null \
   || git remote add origin "$REMOTE_URL"
 
 log "Staging local changes..."
+git update-index --refresh -q 2>/dev/null || true
 git add -A
 
-if git diff --cached --quiet; then
+if [[ -z "$(git status --porcelain)" ]]; then
   log "Nothing to commit — config is already up to date."
   exit 0
 fi
