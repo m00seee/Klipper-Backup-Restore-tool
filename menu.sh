@@ -54,7 +54,7 @@ ask() {
     [[ -n "$_default" ]] \
       && printf "  ${BOLD}%s${NC} [%s]: " "$_prompt" "$_default" \
       || printf "  ${BOLD}%s${NC}: " "$_prompt"
-    read -r _val; _val="${_val:-$_default}"
+    read -re _val; _val="${_val:-$_default}"
     if [[ -n "$_val" ]]; then printf -v "$_var" '%s' "$_val"; return; fi
     err "This field cannot be empty."
   done
