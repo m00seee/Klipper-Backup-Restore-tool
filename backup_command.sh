@@ -15,7 +15,7 @@ else
   REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_REPO}.git"
 fi
 
-cd "$HOME/printer_data/config" || die "Cannot access Klipper config directory"
+cd "${BACKUP_PATH:-$HOME/printer_data/config}" || die "Cannot access backup directory: ${BACKUP_PATH}"
 
 git remote set-url origin "$REMOTE_URL" 2>/dev/null \
   || git remote add origin "$REMOTE_URL"

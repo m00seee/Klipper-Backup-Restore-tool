@@ -97,6 +97,8 @@ GIT_TOKEN="${GIT_TOKEN}"
 GIT_REPO="${GIT_REPO}"
 GIT_BRANCH="${GIT_BRANCH}"
 GITEA_HOST="${GITEA_HOST:-}"
+BACKUP_PATH="${BACKUP_PATH:-$HOME/printer_data/config}"
+INCLUDE_GCODES="${INCLUDE_GCODES:-false}"
 EOF
   chmod 600 "$CONFIG_FILE"
   ok "Config saved to $CONFIG_FILE (mode 600)"
@@ -171,7 +173,7 @@ else
   REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_REPO}.git"
 fi
 
-cd "$HOME/printer_data/config" || die "Cannot access Klipper config directory"
+cd "${BACKUP_PATH:-$HOME/printer_data/config}" || die "Cannot access backup directory: ${BACKUP_PATH}"
 
 git remote set-url origin "$REMOTE_URL" 2>/dev/null \
   || git remote add origin "$REMOTE_URL"
@@ -213,7 +215,7 @@ else
   REMOTE_URL="https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/${GIT_REPO}.git"
 fi
 
-cd "$HOME/printer_data/config" || die "Cannot access Klipper config directory"
+cd "${BACKUP_PATH:-$HOME/printer_data/config}" || die "Cannot access backup directory: ${BACKUP_PATH}"
 
 git remote set-url origin "$REMOTE_URL" 2>/dev/null \
   || git remote add origin "$REMOTE_URL"
@@ -276,7 +278,8 @@ EOF
 
 # ── Git initialisation ──────────────────────────────────────────────────────────
 init_git() {
-  cd "$KLIPPER_CONFIG" || { err "Cannot access $KLIPPER_CONFIG"; exit 1; }
+  local path="${BACKUP_PATH:-$KLIPPER_CONFIG}"
+  cd "$path" || { err "Cannot access $path"; exit 1; }
   local remote_url; remote_url=$(build_remote_url)
 
   git config --global user.name  "$GIT_USERNAME"
@@ -289,7 +292,7 @@ init_git() {
     git init
     git symbolic-ref HEAD "refs/heads/${GIT_BRANCH}"
     git remote add origin "$remote_url"
-    ok "Git initialised (branch: ${GIT_BRANCH})"
+    ok "Git initialised in ${path} (branch: ${GIT_BRANCH})"
   fi
 }
 
@@ -332,6 +335,68 @@ enter_credentials() {
   esac
   ask GIT_REPO   "Repository path"
   ask GIT_BRANCH "Default branch name" "main"
+}
+
+select_backup_scope() {
+  step "Backup Scope"
+  echo
+  echo "  1) Config only     — printer_data/config  (recommended)"
+  echo "  2) Full printer data — printer_data  (includes database, history, gcodes)"
+  echo
+  while true; do
+    printf "  ${BOLD}Choose${NC} [1-2]: "
+    read -r _c
+    case "$_c" in
+      1)
+        BACKUP_PATH="$HOME/printer_data/config"
+        INCLUDE_GCODES="false"
+        ok "Scope: config only"
+        break
+        ;;
+      2)
+        BACKUP_PATH="$HOME/printer_data"
+        echo
+        warn "G-code files can be very large and will count against your repo size limit."
+        if confirm "Include gcodes in the backup?"; then
+          INCLUDE_GCODES="true"
+          ok "Scope: full printer_data (including gcodes)"
+        else
+          INCLUDE_GCODES="false"
+          ok "Scope: full printer_data (gcodes excluded)"
+        fi
+        warn "Moonraker database files may be locked during backup — a brief pause is normal."
+        break
+        ;;
+      *) err "Please enter 1 or 2." ;;
+    esac
+  done
+}
+
+write_gitignore() {
+  local gitignore="${BACKUP_PATH}/.gitignore"
+  # Only write for full backup — config-only doesn't need one
+  [[ "$BACKUP_PATH" == "$HOME/printer_data/config" ]] && return
+
+  cat > "$gitignore" <<'EOF'
+# Logs — noisy and not useful to restore
+logs/
+*.log
+
+# Runtime / socket files
+comms/
+
+# Temporary files
+tmp/
+
+# Moonraker database journal (safe to exclude, rebuilt on start)
+.moonraker.db-journal
+EOF
+
+  if [[ "$INCLUDE_GCODES" != "true" ]]; then
+    echo -e "\n# G-code files excluded (too large)\ngcodes/" >> "$gitignore"
+  fi
+
+  ok ".gitignore written to ${BACKUP_PATH}"
 }
 
 test_connection() {
@@ -557,11 +622,13 @@ run_setup() {
   select_provider
   enter_credentials
   test_connection
+  select_backup_scope
 
   step "Saving configuration"
   save_config
 
   step "Initialising Git"
+  write_gitignore
   init_git
 
   step "Installing components"
@@ -572,7 +639,7 @@ run_setup() {
   step "Initial backup"
   if confirm "Push an initial backup to ${GIT_PROVIDER} now?" "y"; then
     echo
-    cd "$KLIPPER_CONFIG"
+    cd "${BACKUP_PATH:-$KLIPPER_CONFIG}"
     # Pull first in case the remote was initialised with a README or other commit
     git pull --rebase --allow-unrelated-histories origin "$GIT_BRANCH" 2>/dev/null || true
     git add -A
@@ -620,7 +687,9 @@ main_menu() {
         select_provider
         enter_credentials
         test_connection
+        select_backup_scope
         save_config
+        write_gitignore
         init_git
         install_scripts
         install_configs
